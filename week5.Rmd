@@ -1,0 +1,351 @@
+---
+title: "Week 5 Notes"
+output:
+  html_document: default
+  word_document: default
+date: '2022-07-21'
+---
+
+#CHAPTER 23 Model Basics
+
+```{r}
+
+library(tidyverse)
+library(modelr)
+options(na.action = na.warn)
+
+library(nycflights13)
+library(lubridate)
+
+
+```
+
+Viewing a simple model
+```{r}
+ggplot(sim1, aes(x, y)) + 
+  geom_point()
+```
+
+
+This looks linear so we randomly generate a few and overlay them on the data
+```{r}
+models <- tibble(
+  a1 = runif(250, -20, 40),
+  a2 = runif(250, -5, 5)
+)
+
+ggplot(sim1, aes(x, y)) + 
+  geom_abline(aes(intercept = a1, slope = a2), data = models, alpha = 1/4) +
+  geom_point() 
+```
+
+This isn't useful yet so we can try to come up with a way to get these lines closer to the data.
+We can do this by fidning the vertical distance between each point and the line. This distance is just the difference between the y value given by the line (the prediction), and the actual y value in the data. So we then use the code below to get the predicted values.
+```{r message=FALSE, warning=FALSE}
+model1 <- function(a, data) {
+  a[1] + data$x * a[2]
+}
+model1(c(7, 1.5), sim1)
+```
+
+We then use the “root-mean-squared deviation” to compute an overall distance between the predicted and actual values.
+
+```{r}
+measure_distance <- function(mod, data) {
+  diff <- data$y - model1(mod, data)
+  sqrt(mean(diff ^ 2))
+}
+measure_distance(c(7, 1.5), sim1)
+```
+
+We then compute the distance for all the models defined above
+```{r message=FALSE, warning=FALSE}
+sim1_dist <- function(a1, a2) {
+  measure_distance(c(a1, a2), sim1)
+}
+
+models <- models %>% 
+  mutate(dist = purrr::map2_dbl(a1, a2, sim1_dist))
+models
+```
+
+
+We then overlay the 10 best lines on to the data
+```{r}
+ggplot(sim1, aes(x, y)) + 
+  geom_point(size = 2, colour = "grey30") + 
+  geom_abline(
+    aes(intercept = a1, slope = a2, colour = -dist), 
+    data = filter(models, rank(dist) <= 10)
+  )
+```
+
+
+This still isn't the representation so we use optim now. Which finds the y intercept and slope of the best line. We can then plot this line on top of the data.
+
+
+
+```{r}
+best <- optim(c(0, 0), measure_distance, data = sim1)
+best$par
+ggplot(sim1, aes(x, y)) + 
+  geom_point(size = 2, colour = "grey30") + 
+  geom_abline(intercept = best$par[1], slope = best$par[2])
+```
+
+
+
+For linear lines we could have also used lm(), and get the same result as optim.
+```{r}
+sim1_mod <- lm(y ~ x, data = sim1)
+coef(sim1_mod)
+```
+
+## Exercise 
+```{r}
+sim1a <- tibble(
+  x = rep(1:10, each = 3),
+  y = x * 1.5 + 6 + rt(length(x), df = 2)
+)
+
+best_2 <- lm(y ~ x, data = sim1a)
+coef(best_2)
+
+ggplot(sim1a, aes(x, y)) + 
+  geom_point(size = 2, colour = "grey30") + 
+  geom_abline(intercept = coef(best_2)[1], slope = coef(best_2)[2])
+```
+
+
+                         I noticed that the slope was always roughly 1.5 ish.
+
+
+
+
+
+To visualise the predictions from a model, we start by generating an evenly spaced grid of values that covers the region where our data lies. By using data_grid
+
+
+```{r message=FALSE}
+grid <- sim1 %>% 
+  data_grid(x) 
+
+```
+
+
+Next we add predictions
+```{r message=TRUE}
+grid <- grid %>% 
+  add_predictions(sim1_mod) 
+grid
+
+grid <- grid %>% 
+  gather_predictions(sim1_mod) 
+grid
+
+grid <- grid %>% 
+  spread_predictions(sim1_mod) 
+grid
+```
+#2
+add_predictions() which adds predictions from the line to a new column in the data frame.
+gather_predictions() which adds each prediction as a row.
+spread_predictions() which adds each prediction to a new column.
+
+Then we plot the predictions
+```{r}
+ggplot(sim1, aes(x)) +
+  geom_point(aes(y = y)) +
+  geom_line(aes(y = pred), data = grid, colour = "red", size = 1)
+```
+
+Transformations
+```{r}
+df <- tribble(
+  ~y, ~x,
+   1,  1,
+   2,  2, 
+   3,  3
+)
+
+model_matrix(df, y ~ I(x^2) + x)
+```
+
+
+```{r}
+sim5 <- tibble(
+  x = seq(0, 3.5 * pi, length = 50),
+  y = 4 * sin(x) + rnorm(length(x))
+)
+
+ggplot(sim5, aes(x, y)) +
+  geom_point()
+```
+
+
+
+
+
+```{r}
+#mod1 <- lm(y ~ ns(x, 1), data = sim5)
+#mod2 <- lm(y ~ ns(x, 2), data = sim5)
+#mod3 <- lm(y ~ ns(x, 3), data = sim5)
+#mod4 <- lm(y ~ ns(x, 4), data = sim5)
+#mod5 <- lm(y ~ ns(x, 5), data = sim5)
+
+#grid <- sim5 %>% 
+#data_grid(x = seq_range(x, n = 50, expand = 0.1)) %>% 
+#  gather_predictions(mod1, mod2, mod3, mod4, mod5, .pred = "y")
+
+#ggplot(sim5, aes(x, y)) + 
+#  geom_point() +
+#  geom_line(data = grid, colour = "red") +
+#  facet_wrap(~ model)
+```
+
+
+
+```{r}
+sim6 <- tibble(
+  x = seq(0, 3.5 * pi, length = 40),
+  y = 6 * cos(x) + rnorm(length(x))
+)
+
+ggplot(sim6, aes(x, y)) +
+  geom_point()
+```
+
+```{r}
+sim7 <- tibble(
+  x = seq(0, 5, length = 40),
+  y = 2.17^x + rnorm(length(x))
+)
+
+ggplot(sim7, aes(x, y)) +
+  geom_point()
+```
+
+
+## CHAPTER 24 Model Building
+
+```{r}
+library(tidyverse)
+library(modelr)
+options(na.action = na.warn)
+
+library(nycflights13)
+library(lubridate)
+```
+
+### What affects the number of daily flights
+
+
+First we visualize number of flights per day 
+```{r}
+daily <- flights %>% 
+  mutate(date = make_date(year, month, day)) %>% 
+  group_by(date) %>% 
+  summarise(n = n())
+
+ggplot(daily, aes(date, n)) + 
+  geom_line()
+
+```
+
+
+We could then look at th day of week
+```{r}
+daily <- daily %>% 
+  mutate(wday = wday(date, label = TRUE))
+ggplot(daily, aes(wday, n)) + 
+  geom_boxplot()
+```
+We can conclude that there are fewer flights on weekends because most travel is for business.
+
+We remove this strong pattern and then we compute and visualise the residual
+```{r}
+mod <- lm(n ~ wday, data = daily)
+
+grid <- daily %>% 
+  data_grid(wday) %>% 
+  add_predictions(mod, "n")
+
+ggplot(daily, aes(wday, n)) + 
+  geom_boxplot() +
+  geom_point(data = grid, colour = "red", size = 4)
+
+daily <- daily %>% 
+  add_residuals(mod)
+daily %>% 
+  ggplot(aes(date, resid)) + 
+  geom_ref_line(h = 0) + 
+  geom_line()
+```
+
+
+We can also highlight long terms trends
+```{r}
+daily %>% 
+  ggplot(aes(date, resid)) + 
+  geom_ref_line(h = 0) + 
+  geom_line(colour = "grey50") + 
+  geom_smooth(se = FALSE, span = 0.20)
+```
+
+
+Jan 21 is Martin Luther King Jr. Day, May 26 is Trinity Sunday, Sep 2 is labor day in future years, they will be on different days of the week
+
+```{r}
+week_start_monday <- function(x) {
+  fct_relevel(x, "Sun", after = 7)
+}
+daily %>% 
+  mutate(wday = week_start_monday(wday)) %>% 
+  ggplot(aes(wday, n)) +
+  geom_boxplot()
+
+```
+
+## CHAPTER 25
+
+The broom package provides a general set of functions to turn models into tidy data. Here we’ll use broom::glance() to extract some model quality metrics. If we apply it to a model, we get a data frame with a single row.
+
+```{r}
+#broom::glance(nz_mod)
+```
+
+```{r message=FALSE}
+#by_country %>% 
+ # mutate(glance = map(model, broom::glance)) %>% 
+#unnest(glance)
+```
+```{r warning=FALSE}
+#glance <- by_country %>% 
+#  mutate(glance = map(model, broom::glance)) %>% 
+#  unnest(glance, .drop = TRUE)
+#glance
+```
+```{r}
+#glance %>% 
+#  arrange(r.squared)
+```
+```{r}
+#glance %>% 
+#  ggplot(aes(continent, r.squared)) + 
+#    geom_jitter(width = 0.5)
+
+```
+```{r}
+#bad_fit <- filter(glance, r.squared < 0.25)
+
+#gapminder %>% 
+#  semi_join(bad_fit, by = "country") %>% 
+#  ggplot(aes(year, lifeExp, colour = country)) +
+#    geom_line()
+```
+
+broom::glance(model) returns a row for each model. Each column gives a model summary: either a measure of model quality, or complexity, or a combination of the two.
+
+broom::tidy(model) returns a row for each coefficient in the model. Each column gives information about the estimate or its variability.
+
+broom::augment(model, data) returns a row for each row in data, adding extra values like residuals, and influence statistics.
