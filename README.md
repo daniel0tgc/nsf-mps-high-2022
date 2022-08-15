@@ -1,1 +1,2 @@
 # nsf-mps-high-2022
+During the summer of 2022, I got to take part in a research internship that taught me many things about data science in R. I spent some time learning the basics of R doing simple things like loading packages and understanding them. Afterward, I got to use the packages to do things like plotting and summary statistics. After learning enough R I was prepared to tackle real data and analyze it to make educated conclusions. I learned so much about coding and statistics that I have progressed so much in so little time. 
