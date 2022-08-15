@@ -1,0 +1,316 @@
+---
+title: "Week 4 homework"
+output: html_document
+date: '2022-07-15'
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(skimr)
+library(janitor)
+library(ggplot2)
+```
+
+**Read in data**
+```{r message=FALSE}
+bloodpressure <- read_csv("bloodpressure.csv")
+accord_key <- read_csv("accord_key.csv")
+bp_hba1c <- read_csv("hba1c.csv")
+```
+
+### Brief description of datasets 
+
+All three data sets contain MaskID which represents the number given to a patient. Each three of these data sets contain 10,251 obs which is the number of individuals.
+
+Number of females #3952
+Number of males  #6299
+```{r echo=TRUE}
+accord_key %>%
+  group_by(female) %>%
+  summarize(number = n(),
+percent = 100 *number / 10251)
+```
+
+- 1953 Black, 19.1%
+- 6393 White, 62.4%
+- 737 Hispanic, 7.2%
+- 1168 Other, 11.4%
+
+### Mean, median, sd for BP/blood sugar measures per individual
+**sbp**
+```{r echo=TRUE, message=TRUE}
+new_sbp <- bloodpressure %>%
+  group_by(MaskID) %>%
+  summarise(max = max(sbp),
+            mean = mean(sbp),
+            median = median(sbp),
+            sd = sd(sbp),
+            IQR = IQR(sbp))
+```
+
+**hba1c**
+```{r}
+new_hba1c <- bp_hba1c %>%
+  group_by(MaskID) %>%
+  summarise(max = max(hba1c),
+            mean = mean(hba1c),
+            median = median(hba1c),
+            sd = sd(hba1c),
+            IQR = IQR(hba1c))
+```
+
+### Distributions for baseline SBP, DBP, and HbA1c
+
+```{r echo=TRUE}
+#Baseline sbp and dbp
+bp_basline <- bloodpressure%>%
+  filter(Visit == "BLR")
+#Baseline hba1c 
+hba1c_baseline <- bp_hba1c %>%
+  filter(Visit == "BLR")
+
+#Baseline sbp, dbp, and hba1c
+baseline_merge <- inner_join(bp_basline, hba1c_baseline)
+
+#Baselines merged with demo info
+b_merge2 <- inner_join(baseline_merge, accord_key, by = "MaskID")
+```
+
+
+
+### Mean, Median, Mode, SD of baseline SBP, DBP, and HbA1c for the whole population
+
+```{r echo=TRUE, message=TRUE, paged.print=TRUE}
+SBP_mean_sd_iqr_baseline <- b_merge2 %>%
+summarise(max = max(sbp),
+            mean = mean(sbp),
+            median = median(sbp),
+            sd = sd(sbp))
+
+DBP_mean_sd_iqr_baseline_SBP <- b_merge2 %>%
+  summarise(max = max(dbp),
+            mean = mean(dbp),
+            median = median(dbp),
+            sd = sd(dbp))
+
+HBA1C_mean_sd_iqr_baseline_SBP <- b_merge2 %>%
+  summarise(max = max(hba1c),
+            mean = mean(hba1c),
+            median = median(hba1c),
+            sd = sd(hba1c))
+```
+
+- sbp
+results in a mean of 136.3, median of 135, and sd of 17.11545
+
+- dbp
+results in a mean of 74.9, median of 75, and sd of 10.66146
+
+- hba1c
+results in a mean of 8.3, median of 8.1, and sd of 1.057004
+
+###  mean (SD) and median (IQR) of baseline SBP, DBP, and HbA1c for male/female 
+```{r}
+#sbp
+b_merge2 %>%
+  group_by(female) %>%
+  summarise(max = max(sbp),
+            mean = mean(sbp),
+            median = median(sbp),
+            sd = sd(sbp),
+            IQR = IQR(sbp))
+#dbp
+b_merge2 %>%
+  group_by(female) %>%
+  summarise(mean = mean(dbp),
+            median = median(dbp),
+            sd = sd(dbp),
+            IQR = IQR(dbp))
+
+#hba1c
+b_merge2 %>%
+  group_by(female) %>%
+  summarise(mean = mean(hba1c),
+            median = median(hba1c),
+            sd = sd(hba1c),
+            IQR = IQR(hba1c))
+```
+
+### Mean (SD) and median (IQR) of baseline SBP, DBP, and HbA1c for different ethnic groups
+
+```{r}
+#hba1c
+b_merge2 %>%
+  group_by(raceclass) %>%
+  summarise(mean = mean(hba1c),
+            median = median(hba1c),
+            sd = sd(hba1c),
+            IQR = IQR(hba1c))
+#dbp
+b_merge2 %>%
+  group_by(raceclass) %>%
+  summarise(mean = mean(dbp),
+            median = median(dbp),
+            sd = sd(dbp),
+            IQR = IQR(dbp))
+#sbp
+b_merge2 %>%
+  group_by(raceclass) %>%
+  summarise(mean = mean(sbp),
+            median = median(sbp),
+            sd = sd(sbp),
+            IQR = IQR(sbp))
+```
+
+
+### Calculating the mean for SBP over all individuals 
+
+
+```{r}
+mean_sbp_bloodpress <- bloodpressure %>% 
+  group_by(Visit) %>%
+  summarize(meansbp = mean(sbp))
+
+```
+
+### Plotting the mean profile plot for sbp (mfp)
+```{r}
+mean_sbp_bloodpress %>% 
+  ggplot(aes(x = Visit, y = meansbp)) +
+  geom_jitter() +
+  coord_flip()
+
+
+```
+
+### Plotting the mean profile for hba1c
+
+```{r}
+mean_hba1c_bp_hba1c <- bp_hba1c %>%
+  group_by(Visit) %>%
+  summarise(mean = mean(hba1c))
+```
+
+```{r}
+mean_hba1c_bp_hba1c %>% 
+  ggplot(aes(x = Visit, y = mean)) +
+  geom_jitter() +
+  coord_flip()
+```
+
+### Plotting mean profile for dbp
+
+```{r}
+mean_dbp_bloodpressure <- bloodpressure %>% 
+  group_by(Visit) %>%
+  summarise(mean_dbp = mean(dbp))
+
+```
+
+```{r warning=FALSE}
+mean_dbp_bloodpressure %>%
+  ggplot(aes(x = Visit, y = mean_dbp), na.rm == TRUE) +
+  geom_jitter() +
+  coord_flip()
+
+```
+
+
+### Loading in data
+
+```{r message=FALSE, warning=FALSE}
+accord_key <- read_csv(paste("accord_key.csv", sep = ""))
+activitystatus <- read_csv(paste("activitystatus.csv", sep = ""),
+                           col_types = "dcdcdcddd")
+
+bloodpressure <- read_csv(paste("bloodpressure.csv", sep = ""))
+hba1c <- read_csv(paste("hba1c.csv", sep = ""))
+otherlabs <- read_csv(paste("otherlabs.csv", sep = ""))
+
+cvdoutcomes <- read_csv("cvdoutcomes.csv")
+hypoglycemia_events <- read_csv(paste("hypoglycemiaevents.csv", sep = ""))
+hypoglycemia_time1st <- read_csv(paste("hypoglycemiatime1st.csv", sep = ""))
+sae <- read_csv(paste("sae.csv", sep = ""))
+
+```
+
+
+```{r}
+accord_key <- accord_key %>% 
+  mutate(bp_arm = ifelse(arm == 1 | arm == 3, 
+                         "intensive BP", "standard BP or not in BP arm"),
+         glycemic_arm = ifelse(arm == 3 | arm == 4 | arm == 7 | arm == 8, 
+                               "intensive glycemia", "standard glycemia"),
+         glycemic_arm = factor(glycemic_arm, levels = 
+                                 c("standard glycemia", "intensive glycemia")))
+
+```
+
+```{r}
+trend1 <- accord_key %>%
+  left_join(bloodpressure, by = "MaskID") %>%
+  left_join(hba1c, by = c("MaskID", "Visit")) %>% 
+  left_join(activitystatus, by = c("MaskID", "Visit")) %>%
+  select(MaskID, Visit, days_from_baseline, sbp, dbp, hba1c, arm, bp_arm, glycemic_arm) %>% 
+  filter(Visit != "EXIT")
+
+
+table(trend1$glycemic_arm[trend1$Visit=="BLR"])
+```
+
+```{r}
+trend_med <- trend %>% 
+  group_by(Visit, glycemic_arm) %>% 
+  summarize(median = median(hba1c, na.rm = TRUE),
+            Q1 = ifelse(Visit == "BLR" | 
+                          Visit == "F12" | Visit == "F24" | 
+                          Visit == "F36" | Visit == "F48" | Visit == "F60" | Visit == "F72",
+                        quantile(hba1c, 0.25, na.rm = TRUE), 0),
+            Q3 = ifelse(Visit == "BLR" | 
+                          Visit == "F12" | Visit == "F24" | 
+                          Visit == "F36" | Visit == "F48" | Visit == "F60" | Visit == "F72",
+                        quantile(hba1c, 0.75, na.rm = TRUE), 0)) %>% 
+  filter(!is.na(median)) %>%
+  slice_head()
+
+
+
+trend_med
+
+table(trend$glycemic_arm[trend$Visit %in% c("BLR", "F12", "F24", "F36", "F48", "F60", "F72", "F84")],
+      trend$Visit[trend$Visit %in% c("BLR", "F12", "F24", "F36", "F48", "F60", "F72", "F84")])
+
+table(trend$glycemic_arm[trend$days_from_baseline <= 48], 
+      trend$days_from_baseline[trend$days_from_baseline <= 48])
+
+table(accord_key$glycemic_arm)
+
+trend %>% 
+  filter(Visit == "BLR", glycemic_arm == "standard glycemia") 
+
+
+
+
+
+
+### Reproduce the output
+
+
+trend_med %>% 
+  group_by(Visit, glycemic_arm) %>% 
+  ggplot(aes(x = Visit, y = median, shape = glycemic_arm, color = glycemic_arm)) +
+  geom_point(position = position_dodge(width = -0.5)) +
+  geom_line(aes(group = glycemic_arm)) +
+  geom_errorbar(aes(ymin = Q1, ymax = Q3), width = .4, position = position_dodge(width = -0.5)) +
+  theme(legend.position = "bottom") + 
+  labs(title = "Median Glycated Hemoglobin Levels at Each Study Visit",
+       x = "Years", y = "Glycated Hemoglobin (%)") +
+  scale_y_continuous(limits = c(6, 9))
+
+
+
+
+
+```
+
