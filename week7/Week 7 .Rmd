@@ -1,0 +1,314 @@
+---
+title: "Week 7"
+output: html_document
+date: '2022-08-03'
+---
+
+Loading Packages
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(gridExtra)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(here)
+library(skimr)
+library(janitor)
+library(ggplot2)
+```
+
+
+Loading in Data
+
+```{r message=FALSE, warning=FALSE}
+accord_key <- read_csv(paste("accord_key.csv", sep = ""))
+activitystatus <- read_csv(paste("activitystatus.csv", sep = ""),
+                           col_types = "dcdcdcddd")
+
+bloodpressure <- read_csv(paste("bloodpressure.csv", sep = ""))
+hba1c <- read_csv(paste("hba1c.csv", sep = ""))
+otherlabs <- read_csv(paste("otherlabs.csv", sep = ""))
+
+cvdoutcomes <- read_csv("cvdoutcomes.csv")
+hypoglycemia_events <- read_csv(paste("hypoglycemiaevents.csv", sep = ""))
+hypoglycemia_time1st <- read_csv(paste("hypoglycemiatime1st.csv", sep = ""))
+sae <- read_csv(paste("sae.csv", sep = ""))
+
+
+f07_baseline <- read.csv("f07_baselinehistoryphysicalexam.csv")
+microvascular_outcomes <- read_csv("microvascularoutcomes.csv")
+lipids <- read_csv("lipids.csv")
+```
+
+
+Fixing AG dataset
+
+```{r message=FALSE, warning=FALSE}
+AG <- read_xlsx(paste("UCLA Samples-2022-07-19 Summary.xlsx"), 
+                sheet = "Summary", skip = 7) %>% 
+  rename(BSI_ID = `Sample ID`)
+linkfile <- read_csv("zhou_7816_linkfile.csv")
+
+AG <- AG %>% 
+  full_join(linkfile, by = "BSI_ID") %>% 
+  filter(!is.na(MASKID) ) %>% 
+  rename(MaskID = MASKID,
+         Box = `R2020 000036`)
+
+BatchIDs <- c("R2020 000036", "R2020 000037", "R2020 000038", "R2020 000039", 
+              "R2020 000040", "R2020 000041", "R2020 000042", "R2020 000043")
+index = c(1, which(AG$Box %in% BatchIDs), 4001)
+BatchID_col = rep(BatchIDs, diff(index))
+AG <- AG %>% mutate(BatchID = BatchID_col) %>%
+  relocate(BatchID, .before = Box) %>%
+  relocate(MaskID, .after = BSI_ID)
+
+AG_summary <- AG %>% group_by(Box)
+```
+
+
+## Correlation of 1,5 AG measured at 12 months and othe biomarkers at 12 months
+
+### Fixing data sets to merge
+
+```{r}
+BMI <- f07_baseline %>%
+  mutate(m = ht_cm/100) %>%
+  select(m, MaskID, wt_kg) %>%
+  mutate(BMI = wt_kg/m^2)
+
+  
+bloodpressure_12month <- bloodpressure %>%
+  filter(Visit == "F12")
+hba1c_12month <- hba1c %>%
+  filter(Visit == "F12")
+lipids_12_month <- lipids %>%
+  filter(Visit == "F12")
+gfr_12_months <- otherlabs %>% 
+  filter(Visit == "F12") %>%
+  select(MaskID, gfr)
+
+AG_12_month <- AG %>%
+  left_join(hba1c_12month, by = "MaskID") %>%
+  left_join(bloodpressure_12month, by = "MaskID") %>% 
+  left_join(lipids_12_month, by = "MaskID") %>%
+  left_join(gfr_12_months, by = "MaskID") %>%
+  left_join(BMI, by = "MaskID") %>%
+  within(rm(hr, Visit.y, vldl, Visit.x)) 
+```
+
+
+
+## Joining baseline covarties to 1,5 AG measurements
+
+```{r}
+accord_key <- accord_key %>%
+  mutate(glycemic_arm = ifelse(arm==1|arm==2|arm==5|arm==6,0,1),
+         bp_arm = ifelse(arm==3 | arm ==1,1,0),
+         lipid_arm = ifelse(arm==7 | arm == 5,1,0))
+
+
+baseline_ualb <- otherlabs %>% filter(Visit == "BLR") %>% 
+  mutate(kidney = ifelse(gfr < 45 | ualb > 300, 1, 0)) %>% 
+  select(MaskID, -Visit, kidney)
+
+
+tindpt <- AG %>% 
+  left_join(accord_key, by = "MaskID" ) %>%
+  left_join(f07_baseline, by = "MaskID") %>%
+  select(MaskID,
+         baseline_age,
+         glycemic_arm, bp_arm, lipid_arm, female, raceclass, cvd_hx_baseline,
+         yrsdiab, hartfail, eyedisea, smokelif) %>%
+  left_join(baseline_ualb, by = "MaskID")
+```
+
+
+```{r}
+Full_AG <- AG_12_month %>%
+  left_join(tindpt, by = "MaskID")
+```
+
+
+### Two level variable
+
+```{r}
+twolevel_AG <- Full_AG %>% 
+  mutate(BatchID = recode(BatchID, "R2020 000036" = "outliers", 
+                          "R2020 000037" = "outliers", "R2020 000038" = "38-43",
+                          "R2020 000039" = "38-43",
+                          "R2020 000040" = "38-43",
+                          "R2020 000041" = "38-43",
+                          "R2020 000042" = "38-43",
+                          "R2020 000043" = "38-43",))
+
+```
+
+### Plotting biomarkers at 12 months with 1,5 AG
+
+**BMI**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BMI, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+**gfr**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = gfr, y = Mean)) +
+  geom_jitter()+
+  facet_wrap(~ BatchID)
+```
+
+**sbp**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = sbp, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+**dbp**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = dbp, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+**chol**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = chol, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+**trig**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = trig, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+**ldl**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = ldl, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+**hdl**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = hdl, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+
+### Baseline covarties plotting with 1,5 AG
+
+**glycemic arm**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ glycemic_arm)
+```
+
+**bp arm**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ bp_arm)
+```
+
+**lipid arm**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ lipid_arm)
+```
+
+**female/male**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ female)
+```
+
+**raceclass**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ raceclass )
+```
+
+**cvd hx baseline**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ cvd_hx_baseline)
+```
+
+**eyedisea**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ eyedisea)
+```
+
+**smokelif**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ smokelif )
+```
+
+**kidney**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ kidney)
+```
+
+**hartfail**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = BatchID, y = Mean)) +
+  geom_jitter() +
+  facet_wrap( ~ hartfail)
+```
+
+**yrsdiab**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = yrsdiab, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~BatchID)
+```
+
+**baseline age**
+```{r}
+twolevel_AG %>%
+  ggplot(aes(x = baseline_age, y = Mean)) +
+  geom_jitter() +
+  facet_wrap(~ BatchID)
+```
+
+Print(Width = Inf)
+
