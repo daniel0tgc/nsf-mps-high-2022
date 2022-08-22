@@ -1,0 +1,491 @@
+---
+title: "Week 2/3"
+output: html_document
+date: '2022-08-22'
+---
+
+This week introduced me to tidying and analyzing data. I continued some of the chapters from week 1. One of the important things I learned was the pipe "%>%"
+
+```{r}
+# load packages ----
+
+library(tidyverse)
+library(here)
+library(skimr)
+library(janitor)
+library(ggplot2)
+
+```
+
+```{r}
+beaches <- read_csv(here("data1", "sydneybeaches.csv"))
+
+
+# exploring the data -----
+
+View(beaches)
+dim(beaches)
+str(beaches)
+glimpse(beaches)
+head(beaches)
+tail(beaches)
+summary(beaches)
+skim(beaches)
+
+```
+
+```{r}
+# tidying columns-----------
+
+glimpse(beaches)
+
+select_all(beaches, toupper)
+select_all(beaches, tolower)
+
+cleanbeaches <- clean_names(beaches)
+
+names(cleanbeaches)
+
+# for rename use newname = oldname
+cleanbeaches <- rename(cleanbeaches, beachbugs = enterococci_cfu_100ml)
+
+
+```
+
+```{r}
+# select a subset of columns
+select(cleanbeaches, council, site, beachbugs, everything())
+
+# pipe %>%
+
+cleanbeaches <- beaches %>%
+  clean_names() %>%
+  rename(beachbugs = enterococci_cfu_100ml) 
+
+write_csv(cleanbeaches, "cleanbeaches.csv")
+
+```
+
+Summarry Statistics
+```{r}
+# sorting and filtering ----
+
+# which beach has the most extreme levels of bugs
+
+worstbugs <- cleanbeaches %>% arrange(desc(beachbugs))
+
+worstcoogee <- cleanbeaches %>% filter(site == "Coogee Beach") %>%
+  arrange(-beachbugs)
+
+# lets compare max bug value across different beaches
+
+cleanbeaches %>%
+  filter(site %in% c("Coogee Beach", "Bondi Beach")) %>%
+  arrange(-beachbugs)
+
+#group_by and summarise -------
+cleanbeaches %>%
+  filter(site %in% c("Coogee Beach", "Bondi Beach")) %>%
+  group_by(site) %>%
+  summarise(maxbug = max(beachbugs, na.rm = TRUE),
+           meanbugs = mean(beachbugs, na.rm = TRUE),
+           medianbugs = median(beachbugs, na.rm = TRUE),
+           sdbugs = sd(beachbugs, na.rm = TRUE))
+
+```
+
+```{r}
+# lets compare councils
+
+cleanbeaches %>% distinct(council)
+
+councilbysite <- cleanbeaches %>% 
+  group_by(council, site) %>%
+  summarise(meanbugs = mean(beachbugs, na.rm = TRUE),
+            medianbugs = median(beachbugs, na.rm = TRUE))
+
+
+```
+
+```{r}
+# compute new variable -----
+
+glimpse(cleanbeaches)
+
+testdate <- cleanbeaches %>% separate(date, c("day", "month", "year"), remove = FALSE)
+
+cleanbeaches %>% unite(council_site, council:site, remove = FALSE )
+
+# use mutate to transform the beachbugs data
+
+summary(cleanbeaches)
+
+cleanbeaches %>% mutate(logbeachbugs = log(beachbugs))
+
+```
+
+```{r}
+# use mutate to computer new numeric variable
+
+cleanbeaches %>% mutate(beachbugsdiff = beachbugs - lag(beachbugs))
+
+# use mutate to compute new logical data
+
+cleanbeaches %>% mutate(buggier = beachbugs > mean(beachbugs, na.rm = TRUE))
+
+meanbugs = mean(cleanbeaches$beachbugs, na.rm = TRUE)
+
+cleanbeaches_new <- cleanbeaches %>% 
+  separate(date, c("day", "month", "year"), remove = FALSE) %>%
+  mutate(logbeachbugs = log(beachbugs))%>%
+  mutate(beachbugsdiff = beachbugs - lag(beachbugs)) %>%
+  mutate(buggier_all = beachbugs > mean(beachbugs, na.rm = TRUE)) %>%
+  group_by(site) %>%
+  mutate(buggier_site = beachbugs > mean(beachbugs, na.rm = TRUE))
+
+```
+
+```{r}
+# write clean data to .csv -----
+
+write_csv(cleanbeaches_new, here("data1", "cleanbeaches_new.csv"))
+
+```
+
+## Modern Drive
+
+```{r}
+# load packages -------
+
+library(ggplot2)
+library(dplyr)
+library(nycflights13)
+library(knitr)
+library(moderndive)
+library(readr)
+library(tidyr)
+library(fivethirtyeight)
+
+# read in Data ----
+
+View(airlines)
+View(flights)
+View(alaska_flights)
+glimpse(flights)
+kable(airlines)
+airlines$name
+glimpse(airports)
+?flights
+
+```
+
+```{r}
+# Scatter Plot -----
+
+alaska_flights <- flights %>% 
+  filter(carrier == "AS")
+
+ggplot(data = alaska_flights, mapping = aes(x = dep_delay, y = arr_delay)) + 
+  geom_point()
+
+ggplot(data = alaska_flights, mapping = aes(x = dep_delay, y = arr_delay)) + 
+  geom_point(alpha = 0.2)
+
+ggplot(data = alaska_flights, mapping = aes(x = dep_delay, y = arr_delay)) + 
+  geom_jitter(width = 30, height = 30)
+
+
+```
+
+
+```{r}
+# Line Graphs -----
+# usually uses time as the dependent variable
+View(weather)
+View(early_january_weather)
+glimpse(weather)
+?weather
+
+early_january_weather <- weather %>% 
+  filter(origin == "EWR" & month == 1 & day <= 15)
+
+ggplot(data = early_january_weather, mapping = aes(x = time_hour, y = temp)) +
+  geom_line()
+
+```
+
+```{r}
+# Histograms/Bargraphs -----
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram()
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram(color = "white")
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram(color = "white", fill = "steelblue")
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram(bins = 40, color = "white")
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram(binwidth = 10, color = "white")
+
+
+```
+
+```{r}
+# Facets -----
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram(binwidth = 5, color = "white") +
+  facet_wrap(~ month)
+
+ggplot(data = weather, mapping = aes(x = temp)) +
+  geom_histogram(binwidth = 5, color = "white") +
+  facet_wrap(~ month, nrow = 4)
+
+
+```
+
+```{r}
+# Box plots -----
+
+ggplot(data = weather, mapping = aes(x = month, y = temp)) +
+  geom_boxplot()
+
+ggplot(data = weather, mapping = aes(x = factor(month), y = temp)) +
+  geom_boxplot()
+
+```
+
+```{r}
+# Barplots -----
+
+ggplot(data = flights, mapping = aes(x = carrier)) +
+  geom_bar()
+
+ggplot(data = flights, mapping = aes(x = carrier, fill = origin)) +
+  geom_bar()
+
+ggplot(data = flights, mapping = aes(x = carrier, fill = origin)) +
+  geom_bar(position = "dodge")
+
+ggplot(data = flights, mapping = aes(x = carrier, fill = origin)) +
+  geom_bar(position = position_dodge(preserve = "single"))
+
+ggplot(data = flights, mapping = aes(x = carrier)) +
+  geom_bar() +
+  facet_wrap(~ origin, ncol = 1)
+```
+
+
+
+
+# SUMMARY ----
+"1 Scatterplot	Relationship between 2 numerical variables	geom_point()	
+2	Linegraph	Relationship between 2 numerical variables	geom_line()	Used when 
+there is a sequential order to x-variable, e.g., time
+3	Histogram	Distribution of 1 numerical variable	geom_histogram()	Facetted 
+histograms show the distribution of 1 numerical variable split by the values of 
+another variable
+4	Boxplot	Distribution of 1 numerical variable split by the values of another 
+variable	geom_boxplot()	
+5	Barplot	Distribution of 1 categorical variable	geom_bar() when counts are not 
+pre-counted, geom_col() when counts are pre-counted	Stacked, side-by-side, and 
+faceted barplots show the joint distribution of 2 categorical variables"
+
+```{r}
+# Segment 1:
+ggplot(data = flights, mapping = aes(x = carrier)) +
+  geom_bar()
+
+```
+
+```{r}
+
+# Segment 2:
+ggplot(flights, aes(x = carrier)) +
+  geom_bar()
+alaska_flights <- flights %>% 
+  filter(carrier == "AS")
+
+portland_flights <- flights %>% 
+  filter(dest == "PDX")
+View(portland_flights)
+
+
+```
+
+
+
+
+### CHPT 3 
+
+```{r}
+btv_sea_flights_fall <- flights %>% 
+  filter(origin == "JFK" & (dest == "BTV" | dest == "SEA") & month >= 10)
+View(btv_sea_flights_fall)
+     
+not_BTV_SEA <- flights %>% 
+  filter(!(dest == "BTV" | dest == "SEA"))
+View(not_BTV_SEA)
+
+many_airports <- flights %>% 
+  filter(dest %in% c("SEA", "SFO", "PDX", "BTV", "BDL"))
+View(many_airports)
+```
+
+```{r}
+# Gives out NA values, the code below it excludes these NA values
+summary_temp <- weather %>% 
+  summarize(mean = mean(temp), std_dev = sd(temp))
+summary_temp
+
+summary_temp <- weather %>% 
+  summarize(mean = mean(temp, na.rm = TRUE), 
+            std_dev = sd(temp, na.rm = TRUE))
+summary_temp
+
+
+summary_monthly_temp <- weather %>% 
+  group_by(month) %>% 
+  summarize(mean = mean(temp, na.rm = TRUE), 
+            std_dev = sd(temp, na.rm = TRUE))
+summary_monthly_temp
+
+
+by_origin_monthly <- flights %>% 
+  group_by(origin, month) %>% 
+  summarize(count = n())
+by_origin_monthly
+
+
+weather <- weather %>% 
+  mutate(temp_in_C = (temp - 32) / 1.8)
+
+summary_monthly_temp <- weather %>% 
+  group_by(month) %>% 
+  summarize(mean_temp_in_F = mean(temp, na.rm = TRUE), 
+            mean_temp_in_C = mean(temp_in_C, na.rm = TRUE))
+summary_monthly_temp
+
+
+flights <- flights %>% 
+  mutate(gain = dep_delay - arr_delay)
+
+gain_summary <- flights %>% 
+  summarize(
+    min = min(gain, na.rm = TRUE),
+    q1 = quantile(gain, 0.25, na.rm = TRUE),
+    median = quantile(gain, 0.5, na.rm = TRUE),
+    q3 = quantile(gain, 0.75, na.rm = TRUE),
+    max = max(gain, na.rm = TRUE),
+    mean = mean(gain, na.rm = TRUE),
+    sd = sd(gain, na.rm = TRUE),
+    missing = sum(is.na(gain))
+  )
+gain_summary
+
+ggplot(data = flights, mapping = aes(x = gain)) +
+  geom_histogram(color = "white", bins = 20)
+
+flights <- flights %>% 
+  mutate(
+    gain = dep_delay - arr_delay,
+    hours = air_time / 60,
+    gain_per_hour = gain / hours
+  )
+
+freq_dest <- flights %>% 
+  group_by(dest) %>% 
+  summarize(num_flights = n())
+freq_dest
+
+freq_dest %>% 
+  arrange(desc(num_flights))
+
+flights_joined <- flights %>% 
+  inner_join(airlines, by = "carrier")
+View(flights)
+View(flights_joined)
+
+
+flights_with_airport_names <- flights %>% 
+  inner_join(airports, by = c("dest" = "faa"))
+View(flights_with_airport_names)
+
+named_dests <- flights %>%
+  group_by(dest) %>%
+  summarize(num_flights = n()) %>%
+  arrange(desc(num_flights)) %>%
+  inner_join(airports, by = c("dest" = "faa")) %>%
+  rename(airport_name = name)
+named_dests
+
+
+flights_weather_joined <- flights %>%
+  inner_join(weather, by = c("year", "month", "day", "hour", "origin"))
+View(flights_weather_joined)
+
+joined_flights <- flights %>% 
+  inner_join(airlines, by = "carrier")
+View(joined_flights)
+
+flights %>% 
+  select(carrier, flight)
+
+flights_no_year <- flights %>% select(-year)
+
+flights_reorder <- flights %>% 
+  select(year, month, day, hour, minute, time_hour, everything())
+glimpse(flights_reorder)
+
+flights %>% select(starts_with("a"))
+flights %>% select(ends_with("delay"))
+flights %>% select(contains("time"))
+
+flights_time_new <- flights %>% 
+  select(dep_time, arr_time) %>% 
+  rename(departure_time = dep_time, arrival_time = arr_time)
+glimpse(flights_time_new)
+
+named_dests %>% top_n(n = 10, wt = num_flights)
+
+named_dests  %>% 
+  top_n(n = 10, wt = num_flights) %>% 
+  arrange(desc(num_flights))
+```
+
+
+### SUMMARY "
+"filter()	Pick out a subset of rows
+summarize()	Summarize many values to one using a summary statistic function like
+mean(), median(), etc.
+group_by()	Add grouping structure to rows in data frame. Note this does not
+change values in data frame, rather only the meta-data
+mutate()	Create new variables by mutating existing ones
+arrange()	Arrange rows of a data variable in ascending (default) or descending order
+inner_join()	Join/merge two data frames, matching rows by a key variable"
+
+### CHPT 4
+
+```{r}
+dem_score <- read_csv("https://moderndive.com/data/dem_score.csv")
+dem_score
+
+?pivot_wider
+
+# to split variable in data
+#separate(rate, into = c("cases", "population"))
+
+# to unite data
+#unite(new, century, year)
+```
+
+
+
+
+
+
