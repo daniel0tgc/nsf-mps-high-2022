@@ -1,0 +1,57 @@
+---
+title: "Week 1"
+output: html_document
+date: '2022-08-22'
+---
+
+### Downloading R
+
+During this first week I installed R/Rstudio and learned about packages such as tidyverse. I read a chapter from "Getting Started with R and Rstudio" as well as "Modern Drive"
+
+After learning how to install packages I loaded them for the first time.
+
+```{r cars}
+# load packages ----
+
+library(tidyverse)
+library(here)
+library(skimr)
+library(janitor)
+library(ggplot2)
+
+```
+
+I then learned to read data
+
+```{r}
+# read in data ----------
+
+beaches <- read_csv(here("data1", "sydneybeaches.csv"))
+
+```
+
+Similar process with Modern Drive
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(nycflights13)
+library(knitr)
+library(moderndive)
+library(readr)
+library(tidyr)
+library(fivethirtyeight)
+
+# read in Data ----
+
+View(airlines)
+View(flights)
+View(alaska_flights)
+glimpse(flights)
+kable(airlines)
+airlines$name
+glimpse(airports)
+?flights
+
+
+```
