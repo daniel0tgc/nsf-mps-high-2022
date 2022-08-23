@@ -1,0 +1,203 @@
+---
+title: "Week 8"
+output: html_document
+date: '2022-08-23'
+---
+
+Loading packages
+```{r}
+rm(list=ls())
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(gridExtra)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(here)
+library(skimr)
+library(janitor)
+library(ggplot2)
+
+```
+
+Reading in Data
+```{r}
+
+accord_key <- read_csv(paste("accord_key.csv", sep = ""))
+activitystatus <- read_csv(paste("activitystatus.csv", sep = ""),
+                           col_types = "dcdcdcddd")
+
+bloodpressure <- read_csv(paste("bloodpressure.csv", sep = ""))
+hba1c <- read_csv(paste("hba1c.csv", sep = ""))
+otherlabs <- read_csv(paste("otherlabs.csv", sep = ""))
+
+cvdoutcomes <- read_csv("cvdoutcomes.csv")
+hypoglycemia_events <- read_csv(paste("hypoglycemiaevents.csv", sep = ""))
+hypoglycemia_time1st <- read_csv(paste("hypoglycemiatime1st.csv", sep = ""))
+sae <- read_csv(paste("sae.csv", sep = ""))
+
+
+f07_baseline <- read.csv("f07_baselinehistoryphysicalexam.csv")
+microvascular_outcomes <- read_csv("microvascularoutcomes.csv")
+lipids <- read_csv("lipids.csv")
+
+
+concomitantmeds <- read_csv("concomitantmeds.csv")
+concomitantmeds_baseline <- concomitantmeds %>% filter(Visit == "BLR") %>%
+  mutate(insulin = ifelse(nphl_insulin==1|reg_insulin==1|la_insulin==1 | othbol_insulin==1 |premix_insulin==1, 1, 0))
+
+B12_concomitantmeds <- concomitantmeds_baseline %>%
+  select("a2rb", "acei" , "fibrate" , "statin" , "sulfonylurea" ,
+         "biguanide" , "meglitinide" , "tzd", "MaskID")
+```
+
+Tidying 1,5 AG data
+```{r}
+
+# 1,5 AG 
+AG <- read_xlsx(paste("UCLA Samples-2022-07-19 Summary.xlsx"), 
+                sheet = "Summary", skip = 7) %>% 
+  rename(BSI_ID = `Sample ID`)
+linkfile <- read_csv("zhou_7816_linkfile.csv")
+
+AG <- AG %>% 
+  full_join(linkfile, by = "BSI_ID") %>% 
+  filter(!is.na(MASKID) ) %>% 
+  rename(MaskID = MASKID,
+         Box = `R2020 000036`)
+
+BatchIDs <- c("R2020 000036", "R2020 000037", "R2020 000038", "R2020 000039", 
+              "R2020 000040", "R2020 000041", "R2020 000042", "R2020 000043")
+index = c(1, which(AG$Box %in% BatchIDs), 4001)
+BatchID_col = rep(BatchIDs, diff(index))
+AG <- AG %>% mutate(BatchID = BatchID_col) %>%
+  relocate(BatchID, .before = Box) %>%
+  relocate(MaskID, .after = BSI_ID)
+
+AG_summary <- AG %>% group_by(Box)
+
+
+```
+
+
+Adding 12 months biomarkers
+
+```{r}
+bloodpressure_12month <- bloodpressure %>%
+  filter(Visit == "F12")
+hba1c_12month <- hba1c %>%
+  filter(Visit == "F12")
+lipids_12_month <- lipids %>%
+  filter(Visit == "F12")
+gfr_12_months <- otherlabs %>% 
+  filter(Visit == "F12") %>%
+  select(MaskID, gfr)
+```
+
+
+```{r}
+BMI <- f07_baseline %>%
+  mutate(m = ht_cm/100) %>%
+  select(m, MaskID, wt_kg) %>%
+  mutate(BMI = wt_kg/m^2)
+
+```
+
+Joining 12 months biomarkers with 1,5 AG
+```{r}
+AG_12_month <- AG %>%
+  left_join(hba1c_12month, by = "MaskID") %>%
+  left_join(bloodpressure_12month, by = c("Visit", "MaskID")) %>% 
+  left_join(lipids_12_month, by = c("Visit", "MaskID")) %>%
+  left_join(gfr_12_months, by = "MaskID") %>%
+  left_join(BMI, by = "MaskID") 
+
+```
+
+
+Tidying baseline biomarkers, 
+bp_arm and lipid_arm
+```{r}
+accord_key <- accord_key %>%
+  mutate(glycemic_arm = ifelse(arm==1|arm==2|arm==5|arm==6,0,1),
+         bp_arm = ifelse(arm==3 | arm ==1,1,0),
+         lipid_arm = ifelse(arm==7 | arm == 5,1,0))
+```
+
+kidney
+```{r}
+
+baseline_ualb <- otherlabs %>% filter(Visit == "BLR") %>% 
+  mutate(kidney = ifelse(gfr < 45 | ualb > 300, 1, 0)) %>% 
+  select(MaskID, -Visit, kidney)
+
+```
+
+All other biomarkers all joined together
+```{r}
+tindpt <- AG %>% 
+  left_join(accord_key, by = "MaskID" ) %>%
+  left_join(f07_baseline, by = "MaskID") %>%
+  select(MaskID,
+         baseline_age,
+         glycemic_arm, bp_arm, lipid_arm, female, raceclass, cvd_hx_baseline,
+         yrsdiab, hartfail, eyedisea, smokelif) %>%
+  left_join(baseline_ualb, by = "MaskID")
+
+
+```
+
+Joining biomarkers with 1,5 AG
+```{r}
+AG_Baseline <- AG %>%
+  left_join(tindpt, by = "MaskID") %>%
+  left_join(B12_concomitantmeds, by = "MaskID")
+```
+
+```{r}
+AG <- AG %>%
+  left_join(hba1c_12month, by = "MaskID")
+```
+
+### HbA1c at 12 months accross batches
+```{r}
+AG %>%
+  ggplot(aes(x = BatchID, y = hba1c)) +
+  geom_boxplot() 
+```
+
+```{r}
+AG_12_month %>%
+  group_by(BatchID) %>%
+  filter(Box %in% c("Box 1", "Box 2", "Box 3", "Box 4", "Box 5", "Box 6", "Box 7")) %>%
+  ggplot(aes(x = Box, y = hba1c)) +
+  geom_boxplot() +
+  facet_wrap(~ BatchID)
+
+```
+
+#### Per Batch
+
+```{r}
+AG_12_month %>%
+  filter(Mean < 1000, Box %in% c("Box 1", "Box 2", "Box 3", "Box 4", "Box 5", "Box 6", "Box 7")) %>%
+  group_by(BatchID) %>%
+  ggplot(aes(x = hba1c, y = Mean)) +
+  geom_jitter() +
+    facet_wrap(~ BatchID)
+
+```
+
+```{r}
+
+AG_12_month %>%
+  filter(Mean < 50, Box %in% c("Box 1", "Box 2", "Box 3", "Box 4", "Box 5", "Box 6", "Box 7")) %>%
+  group_by(BatchID) %>%
+  ggplot(aes(x = hba1c, y = Mean)) +
+  geom_jitter() +
+  geom_abline(intercept = 40, slope = -3.75) +
+  facet_wrap(~ BatchID)
+```
+
+
+
