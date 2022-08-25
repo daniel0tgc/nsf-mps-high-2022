@@ -1,0 +1,265 @@
+---
+title: "Week 9"
+output: html_document
+date: '2022-08-25'
+---
+
+
+###Laoading Packages
+```{r}
+library(tidyverse)
+library(tidymodels)  # for the parsnip package, along with the rest of tidymodels
+
+# Helper packages
+library(readr)       # for importing data
+#library(broom.mixed) # for converting bayesian models to tidy tibbles
+library(dotwhisker)  # for visualizing regression results
+library(skimr)
+library(nycflights13)
+```
+
+### 1. Build a model 
+#L##oading in data 
+```{r}
+urchins <-
+  read_csv("https://tidymodels.org/start/models/urchins.csv") %>% 
+  setNames(c("food_regime", "initial_volume", "width")) %>% 
+  mutate(food_regime = factor(food_regime, levels = c("Initial", "Low", "High")))
+
+```
+
+
+### Plotting the data 
+```{r}
+
+ggplot(urchins,
+       aes(x = initial_volume, 
+           y = width, 
+           group = food_regime, 
+           col = food_regime)) + 
+  geom_point() + 
+  geom_smooth(method = lm, se = FALSE) +
+  scale_color_viridis_d(option = "plasma", end = .7)
+
+
+```
+
+```{r}
+urchins %>% 
+  group_by(food_regime) %>% 
+  summarize(med_vol = median(initial_volume))
+
+```
+
+
+```{r}
+ggplot(urchins,
+       aes(initial_volume, width)) +      
+  geom_jitter() +                         
+  geom_smooth(method = lm, se = FALSE) +                   
+  labs(x = "Volume", y = "Width")         
+
+```
+
+
+###2. Process your data with recipes
+
+####loading the data
+```{r}
+set.seed(123)
+
+flight_data <- 
+  flights %>% 
+  mutate(
+    arr_delay = ifelse(arr_delay >= 30, "late", "on_time"),
+    arr_delay = factor(arr_delay),
+    date = lubridate::as_date(time_hour)
+  ) %>% 
+  inner_join(weather, by = c("origin", "time_hour")) %>% 
+  select(dep_time, flight, origin, dest, air_time, distance, 
+         carrier, date, arr_delay, time_hour) %>% 
+  na.omit() %>% 
+  mutate_if(is.character, as.factor)
+
+```
+
+
+###We can see that about 16% of the flights in this data set arrived more than 30 minutes late.
+```{r}
+
+flight_data %>% 
+  count(arr_delay) %>% 
+  mutate(prop = n/sum(n))
+
+glimpse(flight_data)
+
+flight_data %>% 
+  skimr::skim(dest, carrier) 
+
+```
+
+
+### Fix the random numbers by setting the seed 
+### This enables the analysis to be reproducible when random numbers are used 
+
+```{r}
+set.seed(222)
+
+
+flight_data %>% 
+  distinct(date) %>% 
+  mutate(numeric_date = as.numeric(date)) 
+
+```
+
+
+##Estimates area under the curve
+```{r}
+#flights_aug %>% 
+#  roc_auc(truth = arr_delay, .pred_late)
+```
+
+```{r}
+#> # A tibble: 1 × 3
+#>   .metric .estimator .estimate
+#>   <chr>   <chr>          <dbl>
+#> 1 roc_auc binary         0.764
+
+```
+
+
+### 3 --------
+```{r}
+data(cells, package = "modeldata")
+cells
+
+cells %>% 
+  count(class) %>% 
+  mutate(prop = n/sum(n))
+
+set.seed(123)
+cell_split <- initial_split(cells %>% select(-case), 
+                            strata = class)
+cell_train <- training(cell_split)
+cell_test  <- testing(cell_split)
+
+```
+
+```{r}
+nrow(cell_train)
+#> [1] 1514
+nrow(cell_train)/nrow(cells)
+#> [1] 0.7498762
+
+# training set proportions by class
+cell_train %>% 
+  count(class) %>% 
+  mutate(prop = n/sum(n))
+#> # A tibble: 2 × 3
+#>   class     n  prop
+#>   <fct> <int> <dbl>
+#> 1 PS      975 0.644
+#> 2 WS      539 0.356
+```
+
+
+###test set proportions by class
+```{r}
+cell_test %>% 
+  count(class) %>% 
+  mutate(prop = n/sum(n))
+#> # A tibble: 2 × 3
+#>   class     n  prop
+#>   <fct> <int> <dbl>
+#> 1 PS      325 0.644
+#> 2 WS      180 0.356
+```
+
+```{r}
+rf_mod <- 
+  rand_forest(trees = 1000) %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+```
+
+
+```{r}
+data(cells, package = "modeldata")
+cells
+
+set.seed(123)
+cell_split <- initial_split(cells %>% select(-case), 
+                            strata = class)
+cell_train <- training(cell_split)
+cell_test  <- testing(cell_split)
+
+```
+
+```{r}
+
+tune_spec <- 
+  decision_tree(
+    cost_complexity = tune(),
+    tree_depth = tune()
+  ) %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+tune_spec
+```
+
+```{r}
+
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+```
+
+```{r}
+tree_grid %>% 
+  count(tree_depth)
+
+set.seed(234)
+cell_folds <- vfold_cv(cell_train)
+
+```
+
+```{r}
+
+set.seed(345)
+
+tree_wf <- workflow() %>%
+  add_model(tune_spec) %>%
+  add_formula(class ~ .)
+```
+
+```{r}
+tree_res <- 
+  tree_wf %>% 
+  tune_grid(
+    resamples = cell_folds,
+    grid = tree_grid
+  )
+
+tree_res %>% 
+  collect_metrics()
+
+```
+
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  mutate(tree_depth = factor(tree_depth)) %>%
+  ggplot(aes(cost_complexity, mean, color = tree_depth)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_color_viridis_d(option = "plasma", begin = .9, end = 0)
+
+
+
+```
+
+
+
